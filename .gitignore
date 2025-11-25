@@ -57,5 +57,5 @@ logs/
 Thumbs.db
 
 # Helper scripts and temp files
-.txt
-.sh
+*.txt
+*.sh
