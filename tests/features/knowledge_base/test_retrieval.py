@@ -1,51 +1,73 @@
 import pytest
-from unittest.mock import MagicMock, patch
+import shutil
+from app.core.config import settings
 from app.features.knowledge_base.service.api import search_knowledge_base
-from app.features.knowledge_base.domain.models import ChunkType, KnowledgeChunk, SearchResult
+from app.features.knowledge_base.domain.models import KnowledgeChunk, ChunkType
+from app.features.knowledge_base.data.chroma_store import ChromaRepository
+from app.features.knowledge_base.data.local_embedder import LocalEmbedder
 
-def test_retrieval_logic():
+TEST_DB_PATH = settings.BASE_DIR / "data" / "test_chroma_db_retrieval"
+
+@pytest.fixture(scope="module", autouse=True)
+def setup_test_data():
     """
-    Verifies that the search API:
-    1. Embeds the query using the Librarian.
-    2. Queries the Filing Cabinet (ChromaDB).
-    3. Returns valid Domain Objects.
+    Seeds the DB with specific known facts using real Embeddings.
     """
-    query = "Show me the profit graph"
-    mock_query_vector = [0.9] * 384
+    original_path = settings.CHROMA_DB_PATH
+    settings.CHROMA_DB_PATH = TEST_DB_PATH
     
-    # Mock Result Object from DB Layer
-    mock_search_result = SearchResult(
-        chunk=KnowledgeChunk(
-            id="test_id",
-            video_id="test_vid_1",
-            start_time=5.0,
-            end_time=10.0,
-            text_content="Visual: Red Graph | Text: Look at this",
-            chunk_type=ChunkType.MERGED
-        ),
-        score=0.15
+    if TEST_DB_PATH.exists():
+        shutil.rmtree(TEST_DB_PATH)
+    TEST_DB_PATH.mkdir(parents=True, exist_ok=True)
+    
+    # --- SEED DATA ---
+    repo = ChromaRepository()
+    embedder = LocalEmbedder()
+    
+    # Fact 1
+    text1 = "The project code name is Project Onyx."
+    # Fact 2
+    text2 = "The server requires an RTX 3060 graphics card."
+    
+    vecs = embedder.embed_documents([text1, text2])
+    
+    chunk1 = KnowledgeChunk(
+        id="c1", video_id="v1", start_time=0, end_time=1, 
+        text_content=text1, chunk_type=ChunkType.TRANSCRIPT, metadata={}
     )
+    chunk2 = KnowledgeChunk(
+        id="c2", video_id="v1", start_time=2, end_time=3, 
+        text_content=text2, chunk_type=ChunkType.TRANSCRIPT, metadata={}
+    )
+    
+    repo.upsert([chunk1, chunk2], vecs)
+    
+    yield
+    
+    if TEST_DB_PATH.exists():
+        shutil.rmtree(TEST_DB_PATH)
+    settings.CHROMA_DB_PATH = original_path
 
-    # Patch the dependencies inside the API module
-    with patch("app.features.knowledge_base.service.api.LocalEmbedder") as MockEmbedder, \
-         patch("app.features.knowledge_base.service.api.ChromaRepository") as MockStore:
-        
-        # Setup Mocks
-        mock_embedder_instance = MockEmbedder.return_value
-        mock_embedder_instance.embed_query.return_value = mock_query_vector
-        
-        mock_store_instance = MockStore.return_value
-        mock_store_instance.search.return_value = [mock_search_result]
-        
-        # Execute
-        results = search_knowledge_base(query, limit=3)
-        
-        # Verify
-        mock_embedder_instance.embed_query.assert_called_once_with(query)
-        mock_store_instance.search.assert_called_once_with(mock_query_vector, limit=3)
-        
-        assert len(results) == 1
-        assert results[0].chunk.video_id == "test_vid_1"
-        assert results[0].score == 0.15
-        
-        print("✅ Retrieval Logic Verified: Query flowed to DB correctly.")
+def test_retrieval_semantic_search():
+    """
+    True Integration Test:
+    Queries the DB with a natural language question.
+    Verifies that the Vector Search engine (Cosine Similarity) works.
+    """
+    print("\n🔍 Testing Semantic Retrieval...")
+    
+    # Query is different from text, but semantically related
+    query = "What hardware gpu is needed?"
+    
+    results = search_knowledge_base(query, limit=1)
+    
+    assert len(results) > 0
+    top_result = results[0]
+    
+    print(f"   Query: '{query}'")
+    print(f"   Match: '{top_result.chunk.text_content}' (Score: {top_result.score:.4f})")
+    
+    # Check if it retrieved the correct fact
+    assert "RTX 3060" in top_result.chunk.text_content
+    
+    print("✅ Semantic Search Verified.")

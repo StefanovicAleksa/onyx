@@ -1,24 +1,55 @@
 import pytest
-from unittest.mock import MagicMock, patch
+import shutil
+from app.core.config import settings
 from app.features.transcription.domain.models import TranscriptionResult
 from app.features.vision_analysis.domain.models import VisualContext
 from app.features.knowledge_base.service.ingestion_service import IngestionService
-from app.features.knowledge_base.domain.models import ChunkType
+from app.features.knowledge_base.data.chroma_store import ChromaRepository
 
-def test_ingestion_merging_logic():
+# We use a separate collection or DB path for tests to avoid messing up production data
+TEST_DB_PATH = settings.BASE_DIR / "data" / "test_chroma_db"
+
+@pytest.fixture(scope="module", autouse=True)
+def setup_teardown_db():
     """
-    Verifies that 'The Zipper' correctly merges text and vision
-    when timestamps overlap.
+    Sets up a temporary ChromaDB environment for the Integration Test.
     """
-    # 1. Mock Data
+    # 1. Override Global Config temporarily
+    original_path = settings.CHROMA_DB_PATH
+    settings.CHROMA_DB_PATH = TEST_DB_PATH
+    
+    # Clean start
+    if TEST_DB_PATH.exists():
+        shutil.rmtree(TEST_DB_PATH)
+    TEST_DB_PATH.mkdir(parents=True, exist_ok=True)
+    
+    yield
+    
+    # 2. Cleanup
+    if TEST_DB_PATH.exists():
+        shutil.rmtree(TEST_DB_PATH)
+    
+    # Restore Config
+    settings.CHROMA_DB_PATH = original_path
+
+def test_ingestion_integration_real():
+    """
+    True Integration Test:
+    1. Takes raw Transcription and Visual objects.
+    2. Uses REAL LocalEmbedder (BAAI/bge-small) to generate vectors.
+    3. Writes to REAL ChromaDB on disk.
+    4. Verifies data persistence.
+    """
+    print("\n🧪 Starting Real Ingestion Test (GPU Required for Embeddings)...")
+    
+    # 1. Prepare Data
     transcript = TranscriptionResult(
         text="Full text",
         language="en",
         processing_time=1.0,
         segments=[
-            {"start": 0.0, "end": 5.0, "text": "Hello world"},
-            {"start": 5.0, "end": 10.0, "text": "Look at this graph"}, # Should merge
-            {"start": 10.0, "end": 15.0, "text": "Goodbye"}
+            {"start": 0.0, "end": 5.0, "text": "This is a test of the emergency system."},
+            {"start": 5.0, "end": 10.0, "text": "We are testing the GPU memory."}
         ]
     )
     
@@ -26,45 +57,32 @@ def test_ingestion_merging_logic():
         VisualContext(
             timestamp_start=6.0, 
             timestamp_end=9.0, 
-            description="A red bar chart showing profit",
-            ocr_text="Profit +10%",
+            description="A computer screen showing a terminal with green text.",
+            ocr_text="MEM: 12GB OK",
             confidence=0.99
         )
     ]
     
-    # 2. Mock Dependencies
-    # We patch the classes imported INSIDE ingestion_service.py
-    with patch("app.features.knowledge_base.service.ingestion_service.LocalEmbedder") as MockEmbedder, \
-         patch("app.features.knowledge_base.service.ingestion_service.ChromaRepository") as MockStore:
-        
-        # Setup Mocks
-        mock_embedder_instance = MockEmbedder.return_value
-        # Return fake vectors (list of lists)
-        mock_embedder_instance.embed_documents.return_value = [[0.1]*384] * 3 
-        
-        mock_store_instance = MockStore.return_value
-
-        # 3. Execute
-        service = IngestionService()
-        count = service.ingest_video_intelligence("test_vid_1", transcript, visuals)
-        
-        # 4. Verify
-        assert count == 3
-        
-        # Check what was sent to the DB
-        # The store.upsert was called once with a list of chunks
-        inserted_chunks = mock_store_instance.upsert.call_args[0][0]
-        
-        # Chunk 0: "Hello world" (No Visuals)
-        assert inserted_chunks[0].chunk_type == ChunkType.TRANSCRIPT
-        
-        # Chunk 1: "Look at this graph" (Visuals!)
-        merged_chunk = inserted_chunks[1]
-        assert merged_chunk.chunk_type == ChunkType.MERGED
-        assert "A red bar chart" in merged_chunk.text_content
-        assert "Look at this graph" in merged_chunk.text_content
-        
-        # Chunk 2: "Goodbye" (No Visuals)
-        assert inserted_chunks[2].chunk_type == ChunkType.TRANSCRIPT
-        
-        print("✅ Ingestion Logic Verified: Text and Vision merged correctly.")
+    # 2. Execute Service (No Mocks!)
+    service = IngestionService()
+    count = service.ingest_video_intelligence("integration_test_vid", transcript, visuals)
+    
+    # 3. Verify in DB
+    assert count == 2, f"Expected 2 chunks to be ingested, got {count}"
+    
+    # Open DB manually to check
+    repo = ChromaRepository()
+    # We query by video_id to ensure metadata filter works
+    results = repo.collection.get(where={"video_id": "integration_test_vid"})
+    
+    stored_ids = results["ids"]
+    stored_metas = results["metadatas"]
+    
+    assert len(stored_ids) == 2
+    print("✅ Verified 2 chunks persisted in ChromaDB.")
+    
+    # Check if visuals were merged
+    visual_chunk = next((m for m in stored_metas if m["has_visuals"] is True), None)
+    assert visual_chunk is not None, "Failed to persist visual metadata."
+    
+    print("✅ Real Ingestion Logic Verified.")
