@@ -5,14 +5,17 @@ from pathlib import Path
 class Config:
     """
     Global Application Configuration.
-    Handles environment variables and system path resolution.
     """
-    # 1. FFmpeg Binary Resolution
-    # Priority: Env Var -> System Path -> Default "ffmpeg"
+    # 1. Paths
+    BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
+    
+    # 2. FFmpeg
     FFMPEG_BINARY: str = os.getenv("FFMPEG_BINARY_PATH", shutil.which("ffmpeg") or "ffmpeg")
     
-    # 2. Project Base Directory (Absolute Path)
-    BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
+    # 3. Transcription Settings
+    # This was missing in your previous version, causing the AttributeError
+    WHISPER_MODEL_NAME: str = os.getenv("WHISPER_MODEL_NAME", "large-v3")
+    WHISPER_DEVICE: str = "cuda" # We assume GPU for the appliance
 
 # Singleton Instance
 settings = Config()
