@@ -1,0 +1,66 @@
+# --- Python Core ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual Environments ---
+venv/
+env/
+.env
+.venv
+env.bak/
+venv.bak/
+
+# --- Environment Variables & Secrets ---
+.env
+.env.local
+.env.*
+! .env.example
+
+# --- IDEs & Editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Testing ---
+.pytest_cache/
+.coverage
+htmlcov/
+tests/features/**/temp_artifacts/
+
+# --- Project Data & Artifacts (Do NOT Commit Data) ---
+# We ignore the entire data directory to prevent accidental leaks of client data.
+# However, we want to keep the folder structure, so we use .gitkeep.
+data/artifacts/*
+!data/artifacts/.gitkeep
+
+# Ignore temporary test artifacts
+tests/**/temp_artifacts/
+
+# --- Machine Learning Models (Too Big for Git) ---
+# Hugging Face Hub Cache (if in project)
+local_models/
+*.safetensors
+*.bin
+*.pth
+*.pt
+*.ckpt
+*.h5
+
+# --- Logs ---
+*.log
+logs/
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
+
+# Helper scripts and temp files
+*.txt
+*.sh
+
+# Data
+./data
+*.mp3
+*.mp4
