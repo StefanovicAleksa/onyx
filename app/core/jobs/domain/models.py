@@ -5,9 +5,6 @@ from app.core.enums import JobType
 
 @dataclass(frozen=True)
 class JobSubmission:
-    """
-    DTO for requesting a new job.
-    """
     source_id: UUID
     job_type: JobType
     payload: Dict[str, Any] = field(default_factory=dict)

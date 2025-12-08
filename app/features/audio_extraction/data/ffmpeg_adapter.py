@@ -2,7 +2,7 @@ import subprocess
 import logging
 from app.core.config import settings
 from ..domain.interfaces import IAudioExtractor
-from ..domain.models import AudioExtractionJob
+from ..domain.models import AudioExtractionTask
 
 logger = logging.getLogger(__name__)
 
@@ -11,26 +11,22 @@ class FFmpegAudioAdapter(IAudioExtractor):
     Concrete implementation of IAudioExtractor using the system FFmpeg binary.
     """
     
-    def extract(self, job: AudioExtractionJob) -> None:
-        if not job.source_video.exists():
-            raise FileNotFoundError(f"Source video not found: {job.source_video.path}")
+    def extract(self, task: AudioExtractionTask) -> None:
+        if not task.source_video.exists():
+            raise FileNotFoundError(f"Source video not found: {task.source_video.path}")
 
         # Ensure output directory exists before running command
-        job.output_audio.ensure_parent_dir()
+        task.output_audio.ensure_parent_dir()
 
         # Construct FFmpeg command
-        # -y: Overwrite output file without asking
-        # -vn: Disable video recording
-        # -acodec libmp3lame: Force MP3 encoding
-        # -b:a: Set audio bitrate
         cmd = [
             settings.FFMPEG_BINARY,
             "-y",                           
-            "-i", str(job.source_video.path),
+            "-i", str(task.source_video.path),
             "-vn",                          
             "-acodec", "libmp3lame",        
-            "-b:a", f"{job.bitrate_kbps}k", 
-            str(job.output_audio.path)
+            "-b:a", f"{task.bitrate_kbps}k", 
+            str(task.output_audio.path)
         ]
 
         logger.info(f"Executing FFmpeg: {' '.join(cmd)}")
