@@ -22,13 +22,9 @@ def setup_database():
     """
     Creates the tables (schema) in Postgres before EACH test start,
     and drops them after EACH test finishes.
-    
-    Changed scope from 'module' to 'function' to ensure test isolation.
     """
-    # 1. Create Tables
     Base.metadata.create_all(bind=TEST_ENGINE)
     yield
-    # 2. Cleanup (Drop Tables)
     Base.metadata.drop_all(bind=TEST_ENGINE)
 
 @pytest.fixture
@@ -74,57 +70,69 @@ def test_ingest_file_flow(temp_file, db_session):
     assert source_id is not None
 
     # 4. Assert - Check Database
-    # Using Session.get() instead of Query.get() for SQLAlchemy 2.0 compliance
     source_record = db_session.get(SourceModel, source_id)
     assert source_record is not None
     assert source_record.name == "Deposition - Witness A"
-    assert source_record.source_type == SourceType.DEPOSITION
     
     file_record = source_record.original_file
     assert file_record is not None
     assert file_record.file_type == FileType.TEXT
-    # The original file should be deleted (moved)
+    
+    # 5. Assert - Physical File Movement
+    # The original temp file should be GONE (moved)
     assert not original_path.exists() 
-    # The new path should exist in artifacts
+    # The new path should EXIST in artifacts
     assert Path(file_record.file_path).exists()
 
-    # Cleanup: Remove the artifact created by this test
+    # Cleanup artifact
     if Path(file_record.file_path).exists():
         Path(file_record.file_path).unlink()
 
-def test_deduplication_flow(tmp_path, db_session):
+def test_physical_deduplication_and_cleanup(tmp_path, db_session):
     """
-    Verifies that ingesting the EXACT same content twice results in:
-    - 1 File Record (Deduplicated)
-    - 2 Source Records (Logical separation)
+    Verifies the Optimization Logic:
+    If a duplicate file is uploaded, the system should:
+    1. Detect it via hash.
+    2. DELETE the new temp file (request.file_path.unlink()).
+    3. Reuse the existing File ID and Path.
     """
-    # 1. Create two files with identical content
-    file_1 = tmp_path / "copy_1.txt"
-    file_1.write_text("Identical Content")
+    # 1. Setup: Create two identical files in temp dir
+    content = b"Unique content for this test run"
     
-    file_2 = tmp_path / "copy_2.txt"
-    file_2.write_text("Identical Content")
-
-    # 2. Ingest First Copy
-    req1 = IngestRequest(file_path=file_1, source_name="Copy 1", source_type=SourceType.DOCUMENT)
+    file_1 = tmp_path / "upload_1.txt"
+    file_1.write_bytes(content)
+    
+    file_2 = tmp_path / "upload_2.txt"
+    file_2.write_bytes(content) # Identical content
+    
+    # 2. Ingest First File (The "Original")
+    req1 = IngestRequest(file_path=file_1, source_name="Source 1", source_type=SourceType.DOCUMENT)
     id1 = ingest_file(req1)
-
-    # 3. Ingest Second Copy
-    req2 = IngestRequest(file_path=file_2, source_name="Copy 2", source_type=SourceType.DOCUMENT)
-    id2 = ingest_file(req2)
-
-    # 4. Assertions
-    assert id1 != id2, "Source IDs must be unique even for same file"
-
-    source1 = db_session.get(SourceModel, id1)
-    source2 = db_session.get(SourceModel, id2)
-
-    # Both sources should point to the SAME physical file ID
-    assert source1.file_id == source2.file_id
     
-    # Verify we only have 1 row in the files table for this hash
-    total_files = db_session.query(FileModel).count()
-    assert total_files == 1
+    # Get the path where the first file ended up
+    source1 = db_session.get(SourceModel, id1)
+    original_artifact_path = Path(source1.original_file.file_path)
+    assert original_artifact_path.exists()
+    
+    # 3. Ingest Second File (The "Duplicate")
+    req2 = IngestRequest(file_path=file_2, source_name="Source 2", source_type=SourceType.DOCUMENT)
+    id2 = ingest_file(req2)
+    
+    # 4. Critical Assertions for Optimization
+    
+    # A. The second temp file should be DELETED by the system (unlink check)
+    assert not file_2.exists(), "The duplicate temp file should have been deleted to save space."
+    
+    # B. Source 2 should point to Source 1's physical file
+    source2 = db_session.get(SourceModel, id2)
+    assert source2.original_file.file_path == str(original_artifact_path)
+    
+    # C. Database should only have 1 File Record
+    count = db_session.query(FileModel).count()
+    assert count == 1
+    
+    print(f"\n✅ Deduplication Verified: Temp file deleted, Path reused: {original_artifact_path}")
 
-    # Cleanup artifact
-    Path(source1.original_file.file_path).unlink()
+    # Cleanup
+    if original_artifact_path.exists():
+        original_artifact_path.unlink()

@@ -25,7 +25,6 @@ class LocalFileSystem(IFileSystem):
         destination = sub_dir / f"{file_hash}{extension}"
         
         # 3. Move file (Copy then unlink is safer across partitions)
-        # using shutil.move handles cross-fs moves automatically
         shutil.move(str(source), str(destination))
         
         return destination, file_size

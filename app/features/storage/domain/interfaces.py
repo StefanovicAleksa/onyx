@@ -1,11 +1,10 @@
 from abc import ABC, abstractmethod
 from uuid import UUID
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Optional
 
 from app.core.db_models import FileModel
 from app.core.enums import FileType
-from .models import IngestRequest
 
 class IHasher(ABC):
     """Contract for calculating file checksums."""
@@ -31,7 +30,7 @@ class IFileSystem(ABC):
 class IStorageRepository(ABC):
     """Contract for Database interactions."""
     @abstractmethod
-    def get_file_by_hash(self, file_hash: str) -> FileModel | None:
+    def get_file_by_hash(self, file_hash: str) -> Optional[FileModel]:
         """Checks if we already have this file."""
         pass
 
@@ -41,6 +40,6 @@ class IStorageRepository(ABC):
                      source_data: dict) -> UUID:
         """
         Transactional insert. 
-        Returns the new Source ID (which defines the user's view of the file).
+        Returns the new Source ID.
         """
         pass

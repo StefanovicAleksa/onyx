@@ -1,6 +1,6 @@
-from uuid import UUID, uuid4
-from sqlalchemy.orm import Session
-from app.core.database import get_db, SessionLocal
+from uuid import UUID
+from typing import Optional
+from app.core.database import SessionLocal
 from app.core.db_models import FileModel, SourceModel
 from ..domain.interfaces import IStorageRepository
 
@@ -9,8 +9,7 @@ class PostgresStorageRepo(IStorageRepository):
     Concrete implementation using SQLAlchemy.
     """
     
-    def get_file_by_hash(self, file_hash: str) -> FileModel | None:
-        # We manually manage the session here for atomic operations
+    def get_file_by_hash(self, file_hash: str) -> Optional[FileModel]:
         with SessionLocal() as db:
             return db.query(FileModel).filter(FileModel.file_hash == file_hash).first()
 
@@ -20,7 +19,8 @@ class PostgresStorageRepo(IStorageRepository):
         """
         with SessionLocal() as db:
             try:
-                # 1. Check if file already exists (Double check for safety)
+                # 1. Check for existing file (Double check inside txn for safety)
+                # We use the file_hash from the incoming dictionary
                 existing_file = db.query(FileModel).filter(
                     FileModel.file_hash == file_data["file_hash"]
                 ).first()
