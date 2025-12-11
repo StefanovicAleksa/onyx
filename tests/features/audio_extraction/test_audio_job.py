@@ -24,7 +24,16 @@ def db_session():
 
 def test_audio_link(tmp_path, db_session):
     p = tmp_path / "vid.mp4"
-    subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=d=1", "-c:v", "libx264", str(p)], check=True)
+    # FIX: Added '-f lavfi -i sine=f=1000:d=1' to generate dummy audio!
+    # -map 0:v -map 1:a ensures we map video from input 0 and audio from input 1
+    subprocess.run([
+        "ffmpeg", "-y", 
+        "-f", "lavfi", "-i", "testsrc=d=1", 
+        "-f", "lavfi", "-i", "sine=f=1000:d=1",
+        "-c:v", "libx264", "-c:a", "aac", 
+        "-map", "0:v", "-map", "1:a",
+        str(p)
+    ], check=True, capture_output=True)
     
     sid = ingest_file(IngestRequest(p, "Vid", SourceType.VIDEO_FILE))
     jid = JobManager().submit_job(JobSubmission(sid, JobType.AUDIO_EXTRACTION, {}))
