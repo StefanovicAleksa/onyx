@@ -4,12 +4,13 @@ __pycache__/
 *$py.class
 
 # --- Virtual Environments ---
-venv/
-env/
-.env
-.venv
-env.bak/
-venv.bak/
+# Anchored to root (/) to avoid ignoring 'env' folders inside data if valid
+/venv/
+/env/
+/.env
+/.venv
+/env.bak/
+/venv.bak/
 
 # --- Environment Variables & Secrets ---
 .env
@@ -27,40 +28,48 @@ venv.bak/
 .pytest_cache/
 .coverage
 htmlcov/
-tests/features/**/temp_artifacts/
+# Ignore temp artifacts wherever they appear
+**/temp_artifacts/
+test_output.txt
+test_outputs.txt
 
-# --- Project Data & Artifacts (Do NOT Commit Data) ---
-# We ignore the entire data directory to prevent accidental leaks of client data.
-# However, we want to keep the folder structure, so we use .gitkeep.
-data/artifacts/*
-!data/artifacts/.gitkeep
+# --- Project Data & Artifacts ---
+# Anchored to ensure we only target the root data folder
+/data/artifacts/*
+!/data/artifacts/.gitkeep
 
-# Ignore temporary test artifacts
-tests/**/temp_artifacts/
+# --- Machine Learning Models (Root Only) ---
+# IMPORTANT: Leading slash prevents ignoring valid 'models.py' files in your app
+/local_models/
+/models/
 
-# --- Machine Learning Models (Too Big for Git) ---
-# Hugging Face Hub Cache (if in project)
-local_models/
+# Large File Extensions (Weights & Binaries) - recursive
 *.safetensors
 *.bin
 *.pth
 *.pt
 *.ckpt
 *.h5
+*.nemo
+
+# --- Media Files (Ingest/Output) ---
+*.mp3
+*.mp4
+*.wav
+*.flac
 
 # --- Logs ---
 *.log
-logs/
+/logs/
 
 # --- OS Specific ---
 .DS_Store
 Thumbs.db
 
-# Helper scripts and temp files
-*.txt
+# --- Scripts & Temp Files ---
 *.sh
+!structure_setup.sh
+!combine_files_git.sh
 
-# Data
-./data
-*.mp3
-*.mp4
+*.txt
+!requirements.txt
