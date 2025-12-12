@@ -1,46 +1,101 @@
 import pytest
-from app.core.database import Base
-from app.core.db_models import JobModel, JobStatus
-from app.core.enums import SourceType, JobType
-from app.features.storage.service.api import ingest_file
-from app.features.storage.domain.models import IngestRequest
-from app.core.jobs.service.manager import JobManager
-from app.core.jobs.domain.models import JobSubmission
-from tests.conftest import TEST_ENGINE, TestingSessionLocal
+import uuid
+from app.core.database.base import Base
+from app.core.database.connection import engine, SessionLocal
+from app.core.jobs.manager import JobManager
+from app.core.jobs.types import JobType, JobStatus
+from app.core.jobs.models import JobModel
+from app.features.storage.data.sql_models import FileModel, SourceModel
+from app.core.common.enums import FileType, SourceType
 
-@pytest.fixture(scope="function", autouse=True)
-def setup_database():
-    Base.metadata.create_all(bind=TEST_ENGINE)
+# Setup DB for tests
+@pytest.fixture(scope="module", autouse=True)
+def setup_db():
+    Base.metadata.create_all(bind=engine)
     yield
-    Base.metadata.drop_all(bind=TEST_ENGINE)
+    Base.metadata.drop_all(bind=engine)
 
-@pytest.fixture
-def db_session():
-    session = TestingSessionLocal()
-    try: yield session
-    finally: session.close()
+def test_job_submission_flow():
+    """
+    Verifies that a job can be created and stored in the database.
+    """
+    # 1. SETUP: Create a valid Source first (Required by ForeignKey)
+    with SessionLocal() as db:
+        # Create Dummy File
+        f = FileModel(
+            file_path="/tmp/fake_job_test.wav",
+            file_size_bytes=1024,
+            file_hash="job_test_hash",
+            file_type=FileType.AUDIO
+        )
+        db.add(f)
+        db.flush()
+        
+        # Create Dummy Source
+        s = SourceModel(
+            name="Job Test Source",
+            source_type=SourceType.AUDIO_FILE,
+            file_id=f.id
+        )
+        db.add(s)
+        db.commit()
+        real_source_id = s.id
 
-def test_smart_deduplication(tmp_path, db_session):
-    f1 = tmp_path / "doc.txt"
-    f1.write_text("content")
-    id1 = ingest_file(IngestRequest(f1, "S1", SourceType.DOCUMENT))
+    # 2. EXECUTE: Submit Job
+    manager = JobManager()
+    job_id = manager.submit_job(
+        source_id=real_source_id, 
+        job_type=JobType.TRANSCRIPTION, 
+        params={"model": "tiny"}
+    )
     
-    f2 = tmp_path / "doc_copy.txt"
-    f2.write_text("content")
-    id2 = ingest_file(IngestRequest(f2, "S2", SourceType.DOCUMENT))
+    assert job_id is not None
+
+    # 3. VERIFY
+    with SessionLocal() as db:
+        job = db.get(JobModel, job_id)
+        assert job is not None
+        assert job.source_id == real_source_id
+        assert job.job_type == JobType.TRANSCRIPTION
+        assert job.status == JobStatus.PENDING
+        assert job.payload == {"model": "tiny"}
+
+def test_run_job_routing_failure():
+    """
+    Verifies that running a job triggers the router.
+    """
+    manager = JobManager()
     
-    mgr = JobManager()
-    jid1 = mgr.submit_job(JobSubmission(id1, JobType.TRANSCRIPTION, {"m":"1"}))
+    # 1. SETUP: Create another valid Source
+    with SessionLocal() as db:
+        f = FileModel(
+            file_path="/tmp/fail_test.wav",
+            file_size_bytes=500,
+            file_hash="fail_test_hash",
+            file_type=FileType.AUDIO
+        )
+        db.add(f)
+        db.flush()
+        s = SourceModel(
+            name="Fail Test Source",
+            source_type=SourceType.AUDIO_FILE,
+            file_id=f.id
+        )
+        db.add(s)
+        db.commit()
+        real_source_id = s.id
+
+    # 2. EXECUTE: Submit a job type that has no handler
+    job_id = manager.submit_job(
+        source_id=real_source_id, 
+        job_type=JobType.INTELLIGENCE
+    )
     
-    # Complete J1
-    j1 = db_session.get(JobModel, jid1)
-    j1.status = JobStatus.COMPLETED
-    j1.meta = {"res": "done"}
-    db_session.commit()
+    # Run it
+    manager.run_job(job_id)
     
-    # Submit J2 (Should reuse)
-    jid2 = mgr.submit_job(JobSubmission(id2, JobType.TRANSCRIPTION, {"m":"1"}))
-    j2 = db_session.get(JobModel, jid2)
-    
-    assert j2.status == JobStatus.COMPLETED
-    assert j2.meta["res"] == "done"
+    # 3. VERIFY
+    with SessionLocal() as db:
+        job = db.get(JobModel, job_id)
+        assert job.status == JobStatus.FAILED
+        assert "No handler registered" in job.error_message
