@@ -1,0 +1,6 @@
+# Core
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+
+# Media Processing (Wrappers only, requires system ffmpeg)
+# We might use ffmpeg-python later, but for now we use subprocess

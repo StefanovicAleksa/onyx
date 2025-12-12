@@ -1,19 +1,13 @@
 import pytest
 import uuid
-from app.core.database.base import Base
-from app.core.database.connection import engine, SessionLocal
+from app.core.database.connection import SessionLocal
 from app.core.jobs.manager import JobManager
 from app.core.jobs.types import JobType, JobStatus
 from app.core.jobs.models import JobModel
 from app.features.storage.data.sql_models import FileModel, SourceModel
 from app.core.common.enums import FileType, SourceType
 
-# Setup DB for tests
-@pytest.fixture(scope="module", autouse=True)
-def setup_db():
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
+# REMOVED: @pytest.fixture def setup_db ... (This was dropping tables!)
 
 def test_job_submission_flow():
     """
