@@ -4,12 +4,13 @@ from typing import Iterator
 
 class IFileWalker(ABC):
     """
-    Contract for traversing a directory structure.
-    Abstracts os.walk logic.
+    Contract for traversing a filesystem.
+    Abstracts os.walk vs pathlib.
     """
     @abstractmethod
     def walk(self, root: Path, recursive: bool) -> Iterator[Path]:
         """
-        Yields valid files one by one, filtering out system junk.
+        Yields valid file paths one by one.
+        Should handle filtering of system/hidden files internally.
         """
         pass

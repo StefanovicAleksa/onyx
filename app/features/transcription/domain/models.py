@@ -1,24 +1,24 @@
 from dataclasses import dataclass, field
-from typing import List
-from app.core.shared_types import MediaFile
+from typing import List, Optional
 
 @dataclass(frozen=True)
 class TranscriptionSegment:
     """
-    A single piece of transcribed text with precise timing.
-    Critical for the 'Intelligence Router' to know WHEN a topic was discussed.
+    Represents a specific phrase with exact timing.
+    This is the atomic unit for RAG retrieval later.
     """
-    start_time: float
-    end_time: float
+    start: float
+    end: float
     text: str
+    confidence: float = 0.0
 
 @dataclass(frozen=True)
 class TranscriptionResult:
     """
-    The complete result of a transcription job.
+    The complete output of the ASR engine.
     """
-    source_audio: MediaFile
+    source_file: str
     language: str
+    model_used: str
     full_text: str
     segments: List[TranscriptionSegment] = field(default_factory=list)
-    model_used: str = "unknown"

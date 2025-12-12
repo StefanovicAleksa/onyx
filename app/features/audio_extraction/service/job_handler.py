@@ -1,45 +1,78 @@
 import logging
-from pathlib import Path
+import tempfile
 from uuid import UUID
-from app.core.database import SessionLocal
-from app.core.db_models import JobModel, JobStatus, VideoAudioModel, SourceModel
-from app.core.enums import SourceType
-from app.core.shared_types import MediaFile
-from app.features.storage.service.api import ingest_file
+from pathlib import Path
+
+from app.core.database.connection import SessionLocal
+from app.features.storage.data.sql_models import SourceModel
+from app.features.storage.service.api import storage
 from app.features.storage.domain.models import IngestRequest
-from ..domain.models import AudioExtractionTask
-from ..data.ffmpeg_adapter import FFmpegAudioAdapter
+from app.core.common.enums import SourceType
+
+from ..data.ffmpeg_adapter import FFmpegAdapter
+from ..data.sql_models import VideoAudioModel
+from ..domain.models import ExtractionConfig
 
 logger = logging.getLogger(__name__)
 
 class AudioExtractionHandler:
-    def __init__(self): self.adapter = FFmpegAudioAdapter()
-
-    def handle(self, job_id: UUID):
-        logger.info(f"🎧 Starting Audio Extraction Job: {job_id}")
+    """
+    Worker for JOB_TYPE.AUDIO_EXTRACTION.
+    """
+    
+    def handle(self, source_id: UUID, params: dict) -> dict:
+        logger.info(f"Processing Audio Extraction for Source: {source_id}")
+        
         with SessionLocal() as db:
-            job = db.get(JobModel, job_id)
-            temp_output = None
-            try:
-                video_path = Path(job.source.original_file.file_path)
-                temp_output = video_path.parent / f"{video_path.stem}_extracted.mp3"
-                job.status = JobStatus.PROCESSING
+            # 1. Fetch Video Source
+            video_source = db.get(SourceModel, source_id)
+            if not video_source:
+                raise ValueError(f"Source {source_id} not found.")
+            
+            # The original file path
+            video_path = Path(video_source.original_file.file_path)
+            
+            # 2. Extract to Temp
+            # We assume Storage service handles the final move to artifacts
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                adapter = FFmpegAdapter()
+                config = ExtractionConfig(
+                    bitrate_kbps=params.get("bitrate", 192)
+                )
+                
+                # Perform Extraction
+                result = adapter.extract_audio(video_path, Path(tmp_dir), config)
+                
+                # 3. Ingest the Result as a new Source
+                # This creates a NEW FileModel and SourceModel for the .mp3
+                audio_source_name = f"Audio - {video_source.name}"
+                
+                ingest_req = IngestRequest(
+                    file_path=result.output_path,
+                    source_name=audio_source_name,
+                    source_type=SourceType.AUDIO_FILE
+                )
+                
+                audio_source_id = storage.ingest_file(ingest_req)
+                
+            # 4. Create the Link (Video -> Audio) in DB
+            # First check if link exists to be safe
+            existing_link = db.query(VideoAudioModel).filter_by(
+                video_source_id=video_source.id,
+                audio_source_id=audio_source_id
+            ).first()
+            
+            if not existing_link:
+                link = VideoAudioModel(
+                    video_source_id=video_source.id,
+                    audio_source_id=audio_source_id
+                )
+                db.add(link)
                 db.commit()
-
-                task = AudioExtractionTask(MediaFile(video_path), MediaFile(temp_output), job.payload.get("bitrate", 192))
-                self.adapter.extract(task)
                 
-                mp3_source_id = ingest_file(IngestRequest(temp_output, f"Audio - {job.source.name}", SourceType.AUDIO_FILE))
-                
-                mp3_source = db.get(SourceModel, mp3_source_id)
-                db.add(VideoAudioModel(source_id=job.source_id, audio_file_id=mp3_source.file_id))
-
-                job.status = JobStatus.COMPLETED
-                job.meta = { "output_source_id": str(mp3_source_id) }
-                logger.info(f"✅ Job {job_id} Success.")
-            except Exception as e:
-                logger.error(f"❌ Job {job_id} Failed: {e}")
-                job.status = JobStatus.FAILED
-                job.error_message = str(e)
-                if temp_output and temp_output.exists(): temp_output.unlink()
-            finally: db.commit()
+            logger.info(f"Linked Video {source_id} to Audio {audio_source_id}")
+            
+            return {
+                "audio_source_id": str(audio_source_id),
+                "format": result.format
+            }

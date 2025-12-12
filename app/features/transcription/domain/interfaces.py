@@ -1,24 +1,21 @@
 from abc import ABC, abstractmethod
-from app.core.shared_types import MediaFile
 from .models import TranscriptionResult
 
 class ITranscriber(ABC):
     """
-    Interface (Contract) for the transcription engine.
+    Contract for any ASR (Automatic Speech Recognition) engine.
+    Allows us to swap Whisper for Faster-Whisper or API-based solutions later.
     """
-    
     @abstractmethod
-    def transcribe(self, audio_file: MediaFile) -> TranscriptionResult:
+    def transcribe(self, audio_path: str, model_size: str) -> TranscriptionResult:
         """
-        Transcribes the given audio file into text with timestamps.
+        Transcribes the audio file at the given path.
         
         Args:
-            audio_file: The source audio.
+            audio_path: Absolute path to the audio file.
+            model_size: 'tiny', 'base', 'small', 'medium', 'large-v3'.
             
         Returns:
-            TranscriptionResult containing segments and full text.
-            
-        Raises:
-            FileNotFoundError, RuntimeError
+            Structured TranscriptionResult.
         """
         pass

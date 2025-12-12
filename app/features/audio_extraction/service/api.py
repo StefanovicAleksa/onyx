@@ -1,27 +1,13 @@
 from pathlib import Path
-from app.core.shared_types import MediaFile
-from ..domain.models import AudioExtractionTask
-from ..data.ffmpeg_adapter import FFmpegAudioAdapter
+from ..domain.models import ExtractionConfig, ExtractionResult
+from ..data.ffmpeg_adapter import FFmpegAdapter
 
-def extract_audio_from_video(video_path: str, output_path: str) -> None:
+def run_extraction(video_path: str, output_dir: str) -> ExtractionResult:
     """
-    Public Service API: Extracts audio track from a video file.
-    Args:
-        video_path: Absolute or relative path to the input video.
-        output_path: Destination path for the mp3 file.
-        
-    Raises:
-        FileNotFoundError, RuntimeError
+    Standalone API: Extracts audio from a video file.
+    Does NOT interact with the database.
     """
-    # 1. Map primitive strings to Domain Entities
-    source = MediaFile(Path(video_path))
-    output = MediaFile(Path(output_path))
+    adapter = FFmpegAdapter()
+    config = ExtractionConfig() # Uses defaults
     
-    # 2. Create the Task (Corrected Class Name)
-    task = AudioExtractionTask(source_video=source, output_audio=output)
-    
-    # 3. Instantiate the Adapter (Dependency Injection)
-    adapter = FFmpegAudioAdapter()
-    
-    # 4. Execute Logic
-    adapter.extract(task)
+    return adapter.extract_audio(Path(video_path), Path(output_dir), config)

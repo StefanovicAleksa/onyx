@@ -1,11 +1,22 @@
 from dataclasses import dataclass
 from pathlib import Path
-from app.core.shared_types import MediaFile
 
 @dataclass(frozen=True)
-class AudioExtractionTask:
-    source_video: MediaFile
-    output_audio: MediaFile
+class ExtractionConfig:
+    """
+    Configuration parameters for audio extraction.
+    Defaulting to high-quality MP3 for Whisper accuracy.
+    """
     bitrate_kbps: int = 192
-    def __post_init__(self):
-        if not self.source_video.exists(): raise FileNotFoundError(f"Missing video: {self.source_video.path}")
+    sample_rate_hz: int = 44100
+    channels: int = 1  # Mono is often sufficient for speech recognition
+    format: str = "mp3"
+
+@dataclass
+class ExtractionResult:
+    """
+    The result of a successful extraction.
+    """
+    output_path: Path
+    format: str
+    duration_seconds: float = 0.0

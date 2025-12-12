@@ -2,18 +2,19 @@ from pathlib import Path
 
 class IgnoreRules:
     """
-    Central logic for what files to skip.
+    Central logic for what files the scanner should skip.
     """
     
-    # Files/Folders to strictly ignore
+    # Exact folder/file names to ignore
     IGNORED_NAMES = {
-        ".DS_Store", "Thumbs.db", ".git", ".env", 
-        "__pycache__", "venv", "node_modules", ".idea", ".vscode"
+        ".DS_Store", "Thumbs.db", "desktop.ini", 
+        ".git", ".env", ".venv", "venv", "node_modules", 
+        "__pycache__", ".idea", ".vscode"
     }
 
-    # Extensions we definitely don't want
+    # Extensions that are system/temp files
     IGNORED_EXTENSIONS = {
-        ".tmp", ".log", ".bak", ".swp", ".pyc"
+        ".tmp", ".log", ".bak", ".swp", ".pyc", ".class"
     }
 
     @classmethod
@@ -21,13 +22,12 @@ class IgnoreRules:
         """
         Returns True if the file/folder should be skipped.
         """
-        # 1. Check strict names
+        # 1. Check exact name matches
         if path.name in cls.IGNORED_NAMES:
             return True
             
         # 2. Check hidden files (starts with dot)
-        # Exception: .gitignore is often useful context for code, 
-        # but for now we ignore hidden system files.
+        # We allow .gitignore but generally ignore dotfiles in data dirs
         if path.name.startswith(".") and path.name != ".gitignore":
             return True
             

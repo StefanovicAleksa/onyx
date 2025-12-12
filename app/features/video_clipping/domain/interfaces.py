@@ -3,18 +3,20 @@ from .models import ClipRequest
 
 class IClipGenerator(ABC):
     """
-    Interface (Contract) for the video clipping implementation.
+    Contract for the video clipping engine.
+    Abstracts away the underlying tool (FFmpeg) from the business logic.
     """
     
     @abstractmethod
     def create_clip(self, request: ClipRequest) -> None:
         """
-        Creates a sub-clip based on the request parameters.
+        Generates a sub-clip from the source video based on the request parameters.
         
         Args:
-            request: The ClipRequest containing source, output, and timestamps.
+            request: The ClipRequest entity containing source, output, and timestamps.
             
         Raises:
-            FileNotFoundError, RuntimeError
+            FileNotFoundError: If source does not exist.
+            RuntimeError: If the underlying clipping process fails.
         """
         pass

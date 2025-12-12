@@ -1,45 +1,39 @@
 from abc import ABC, abstractmethod
 from uuid import UUID
+from typing import Optional, Tuple
 from pathlib import Path
-from typing import Tuple, Optional
-
-from app.core.db_models import FileModel
-from app.core.enums import FileType
+from app.core.common.enums import FileType
 
 class IHasher(ABC):
-    """Contract for calculating file checksums."""
     @abstractmethod
     def calculate_sha256(self, file_path: Path) -> str:
+        """Calculates the SHA256 hash of a file."""
         pass
 
 class IFileSystem(ABC):
-    """Contract for physical file operations."""
     @abstractmethod
     def move_to_artifacts(self, source: Path, file_hash: str) -> Tuple[Path, int]:
         """
-        Moves file to secure storage.
-        Returns (new_absolute_path, file_size_bytes).
+        Moves the file to the secure artifact storage.
+        Returns: (new_absolute_path, file_size_bytes)
         """
         pass
     
     @abstractmethod
     def determine_file_type(self, path: Path) -> FileType:
-        """Detects if file is VIDEO, AUDIO, etc."""
+        """Determines if file is VIDEO, AUDIO, etc."""
         pass
 
 class IStorageRepository(ABC):
-    """Contract for Database interactions."""
     @abstractmethod
-    def get_file_by_hash(self, file_hash: str) -> Optional[FileModel]:
-        """Checks if we already have this file."""
+    def get_file_by_hash(self, file_hash: str) -> Optional[dict]:
+        """Checks if a file with this hash already exists."""
         pass
 
     @abstractmethod
-    def create_entry(self, 
-                     file_data: dict, 
-                     source_data: dict) -> UUID:
+    def create_source(self, file_data: dict, source_data: dict) -> UUID:
         """
-        Transactional insert. 
+        Creates a Source record and (optionally) a File record in one transaction.
         Returns the new Source ID.
         """
         pass

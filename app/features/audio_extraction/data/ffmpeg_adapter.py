@@ -1,44 +1,53 @@
 import subprocess
 import logging
-from app.core.config import settings
+from pathlib import Path
+from app.core.config.settings import settings
 from ..domain.interfaces import IAudioExtractor
-from ..domain.models import AudioExtractionTask
+from ..domain.models import ExtractionConfig, ExtractionResult
 
 logger = logging.getLogger(__name__)
 
-class FFmpegAudioAdapter(IAudioExtractor):
-    """
-    Concrete implementation of IAudioExtractor using the system FFmpeg binary.
-    """
-    
-    def extract(self, task: AudioExtractionTask) -> None:
-        if not task.source_video.exists():
-            raise FileNotFoundError(f"Source video not found: {task.source_video.path}")
-
-        # Ensure output directory exists before running command
-        task.output_audio.ensure_parent_dir()
-
-        # Construct FFmpeg command
+class FFmpegAdapter(IAudioExtractor):
+    def extract_audio(self, video_path: Path, output_dir: Path, config: ExtractionConfig) -> ExtractionResult:
+        if not video_path.exists():
+            raise FileNotFoundError(f"Video not found: {video_path}")
+        
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Output filename: video_name.mp3
+        output_filename = f"{video_path.stem}.{config.format}"
+        output_path = output_dir / output_filename
+        
+        # FFmpeg command
+        # -vn: Disable video
+        # -y: Overwrite output
+        # -q:a 0: Best variable bitrate quality for mp3
         cmd = [
             settings.FFMPEG_BINARY,
-            "-y",                           
-            "-i", str(task.source_video.path),
-            "-vn",                          
-            "-acodec", "libmp3lame",        
-            "-b:a", f"{task.bitrate_kbps}k", 
-            str(task.output_audio.path)
+            "-y",
+            "-i", str(video_path),
+            "-vn",
+            "-acodec", "libmp3lame",
+            "-q:a", "2",  # High quality VBR (~190kbps)
+            str(output_path)
         ]
-
-        logger.info(f"Executing FFmpeg: {' '.join(cmd)}")
+        
+        logger.info(f"Extracting audio: {' '.join(cmd)}")
         
         try:
-            # check=True raises CalledProcessError on non-zero exit code
             subprocess.run(
                 cmd, 
-                capture_output=True, 
-                text=True, 
-                check=True
+                check=True, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE
             )
         except subprocess.CalledProcessError as e:
-            logger.error(f"FFmpeg Execution Failed. STDERR: {e.stderr}")
-            raise RuntimeError(f"Audio extraction failed: {e.stderr}") from e
+            error_msg = e.stderr.decode() if e.stderr else str(e)
+            logger.error(f"FFmpeg failed: {error_msg}")
+            raise RuntimeError(f"Audio extraction failed: {error_msg}")
+
+        return ExtractionResult(
+            output_path=output_path,
+            format=config.format,
+            duration_seconds=0.0 # Could use ffprobe to get exact duration if needed
+        )

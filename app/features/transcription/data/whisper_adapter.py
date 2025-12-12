@@ -1,8 +1,8 @@
-import logging
-import torch
 import whisper
-from app.core.config import settings
-from app.core.shared_types import MediaFile
+import torch
+import logging
+from app.core.config.settings import settings
+from app.core.model_lifecycle.orchestrator import ModelOrchestrator, ModelType
 from ..domain.interfaces import ITranscriber
 from ..domain.models import TranscriptionResult, TranscriptionSegment
 
@@ -10,61 +10,44 @@ logger = logging.getLogger(__name__)
 
 class WhisperAdapter(ITranscriber):
     """
-    Implementation of ITranscriber using OpenAI's Whisper (Local).
+    Concrete implementation using OpenAI's Whisper model.
+    Uses ModelOrchestrator to ensure safe VRAM usage.
     """
-    
-    def __init__(self, model_size: str = "large-v3"):
-        self.model_size = model_size
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self._model = None # Lazy loading
+    def __init__(self):
+        self.orchestrator = ModelOrchestrator()
+        self.device = settings.WHISPER_DEVICE
 
-    def _load_model(self):
-        """
-        Loads the model into memory only when needed.
-        """
-        if self._model is None:
-            logger.info(f"🧠 Loading Whisper model '{self.model_size}' on {self.device}...")
-            try:
-                self._model = whisper.load_model(self.model_size, device=self.device)
-            except Exception as e:
-                logger.error(f"Failed to load Whisper model: {e}")
-                raise RuntimeError(f"Could not load Whisper model: {e}")
+    def transcribe(self, audio_path: str, model_size: str) -> TranscriptionResult:
+        logger.info(f"Requesting Whisper ({model_size}) for {audio_path}...")
 
-    def transcribe(self, audio_file: MediaFile) -> TranscriptionResult:
-        if not audio_file.exists():
-            raise FileNotFoundError(f"Audio file not found: {audio_file.path}")
+        # 1. Define the Loader Function
+        # This only runs if the Orchestrator grants the lock.
+        def loader():
+            logger.debug(f"Loading Whisper {model_size} into VRAM...")
+            return whisper.load_model(model_size, device=self.device)
 
-        self._load_model()
-        
-        logger.info(f"🎙️ Transcribing {audio_file.path.name}...")
-        
-        try:
-            # Run the transcription
-            # fp16=False if on CPU to avoid warnings, though Whisper handles this mostly.
-            result_raw = self._model.transcribe(
-                str(audio_file.path),
-                fp16=(self.device == "cuda")
-            )
-            
-            # Map raw Whisper dictionary to Domain Entities
-            segments = []
-            for seg in result_raw.get("segments", []):
-                segments.append(TranscriptionSegment(
-                    start_time=float(seg["start"]),
-                    end_time=float(seg["end"]),
-                    text=seg["text"].strip()
-                ))
+        # 2. Request Model Access (Blocking)
+        model = self.orchestrator.request_model(ModelType.WHISPER, loader)
 
-            logger.info(f"✅ Transcription complete. Found {len(segments)} segments.")
+        # 3. Perform Inference
+        # fp16=False prevents errors on some CPUs; True is faster on GPU.
+        use_fp16 = (self.device == "cuda")
+        result_raw = model.transcribe(audio_path, fp16=use_fp16)
 
-            return TranscriptionResult(
-                source_audio=audio_file,
-                language=result_raw.get("language", "unknown"),
-                full_text=result_raw.get("text", "").strip(),
-                segments=segments,
-                model_used=self.model_size
-            )
+        # 4. Map Raw Output to Domain Models
+        segments = []
+        for seg in result_raw.get('segments', []):
+            segments.append(TranscriptionSegment(
+                start=float(seg['start']),
+                end=float(seg['end']),
+                text=seg['text'].strip(),
+                confidence=float(seg.get('avg_logprob', 0.0)) # Simplified confidence
+            ))
 
-        except Exception as e:
-            logger.error(f"Transcription failed: {e}")
-            raise RuntimeError(f"Transcription failed: {e}") from e
+        return TranscriptionResult(
+            source_file=audio_path,
+            language=result_raw.get('language', 'unknown'),
+            model_used=model_size,
+            full_text=result_raw.get('text', '').strip(),
+            segments=segments
+        )

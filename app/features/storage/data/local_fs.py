@@ -2,30 +2,34 @@ import shutil
 import mimetypes
 from pathlib import Path
 from typing import Tuple
-
-from app.core.config import settings
-from app.core.enums import FileType
+from app.core.config.settings import settings
+from app.core.common.enums import FileType
 from ..domain.interfaces import IFileSystem
 
 class LocalFileSystem(IFileSystem):
     def move_to_artifacts(self, source: Path, file_hash: str) -> Tuple[Path, int]:
         """
-        Moves input file to data/artifacts/{hash_first_2_chars}/{hash}.ext
-        This prevents having 10,000 files in a single directory.
+        Moves input file to: data/artifacts/{first_2_chars_of_hash}/{full_hash}.ext
+        This folder sharding prevents performance issues with thousands of files in one dir.
         """
-        # 1. Get file size
+        # 1. Get file size before moving
         file_size = source.stat().st_size
         
         # 2. Construct destination path
-        # Structure: /data/artifacts/a1/a1b2c3d4...
         extension = source.suffix.lower()
         sub_dir = settings.ARTIFACTS_DIR / file_hash[:2]
         sub_dir.mkdir(parents=True, exist_ok=True)
         
         destination = sub_dir / f"{file_hash}{extension}"
         
-        # 3. Move file (Copy then unlink is safer across partitions)
-        shutil.move(str(source), str(destination))
+        # 3. Move file (Copy + Unlink is safer across different partitions/drives)
+        if destination.exists():
+            # If the physical file already exists (hash collision or re-upload), 
+            # we don't need to overwrite it, just return it.
+            return destination, destination.stat().st_size
+            
+        shutil.copy2(str(source), str(destination))
+        source.unlink() # Remove the temp file
         
         return destination, file_size
 

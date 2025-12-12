@@ -1,26 +1,25 @@
 from uuid import UUID
 from typing import Optional
-from app.core.database import SessionLocal
-from app.core.db_models import FileModel, SourceModel
+from sqlalchemy.orm import Session
+from app.core.database.connection import SessionLocal
+from .sql_models import FileModel, SourceModel
 from ..domain.interfaces import IStorageRepository
 
 class PostgresStorageRepo(IStorageRepository):
-    """
-    Concrete implementation using SQLAlchemy.
-    """
-    
     def get_file_by_hash(self, file_hash: str) -> Optional[FileModel]:
         with SessionLocal() as db:
             return db.query(FileModel).filter(FileModel.file_hash == file_hash).first()
 
-    def create_entry(self, file_data: dict, source_data: dict) -> UUID:
+    def create_source(self, file_data: dict, source_data: dict) -> UUID:
         """
-        Inserts FileModel (if needed) and SourceModel in a single transaction.
+        Transactional logic:
+        1. Check if File exists (Deduplication).
+        2. If not, insert File.
+        3. Insert Source linked to File.
         """
         with SessionLocal() as db:
             try:
-                # 1. Check for existing file (Double check inside txn for safety)
-                # We use the file_hash from the incoming dictionary
+                # 1. Deduplication Check
                 existing_file = db.query(FileModel).filter(
                     FileModel.file_hash == file_data["file_hash"]
                 ).first()
@@ -28,23 +27,22 @@ class PostgresStorageRepo(IStorageRepository):
                 if existing_file:
                     file_id = existing_file.id
                 else:
-                    # Create new File record
+                    # 2. Create New File Record
                     new_file = FileModel(**file_data)
                     db.add(new_file)
-                    db.flush() # Flush to get the ID
+                    db.flush() # Flush to generate ID
                     file_id = new_file.id
                 
-                # 2. Create Source record linked to file
+                # 3. Create Source Record
                 new_source = SourceModel(
                     **source_data,
                     file_id=file_id
                 )
                 db.add(new_source)
-                
                 db.commit()
                 db.refresh(new_source)
-                return new_source.id
                 
+                return new_source.id
             except Exception as e:
                 db.rollback()
                 raise e
