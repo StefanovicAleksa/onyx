@@ -1,16 +1,22 @@
-from dataclasses import dataclass
+# File: app/features/diarization/domain/models.py
+from dataclasses import dataclass, field
+from typing import List, Optional
 
-@dataclass
-class DiarizationSegment:
+@dataclass(frozen=True)
+class SpeakerSegment:
     """
-    A mapping of a time range to a Speaker Label.
+    A time range assigned to a specific speaker label.
     """
     start: float
     end: float
-    speaker_label: str # "speaker_0", "speaker_1"
+    speaker_label: str  # e.g., "speaker_0", "speaker_1"
+    confidence: float = 0.0
 
-@dataclass
+@dataclass(frozen=True)
 class DiarizationResult:
-    source_id: str
+    """
+    The output of the NeMo MSD (Multi-Scale Diarization) engine.
+    """
+    source_file: str
     num_speakers: int
-    segments: list[DiarizationSegment]
+    segments: List[SpeakerSegment] = field(default_factory=list)

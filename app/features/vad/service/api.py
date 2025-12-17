@@ -1,12 +1,11 @@
-from pathlib import Path
+# File: app/features/vad/service/api.py
 from typing import List
-from ..domain.models import SpeechSegment
-from ..data.marblenet_adapter import MarblenetAdapter
+from ..data.marblenet_adapter import MarbleNetAdapter
+from ..domain.models import VadSegment
 
-def detect_voice_activity(audio_path: str) -> List[SpeechSegment]:
+def run_vad_analysis(audio_path: str) -> List[VadSegment]:
     """
-    Public API: Detects speech segments in an audio file.
-    Uses GPU acceleration via Core Orchestrator.
+    Public API for Voice Activity Detection.
     """
-    adapter = MarblenetAdapter()
-    return adapter.detect_speech(Path(audio_path))
+    adapter = MarbleNetAdapter()
+    return adapter.detect_voice(audio_path)

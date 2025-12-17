@@ -1,14 +1,17 @@
+# File: app/features/vad/domain/models.py
 from dataclasses import dataclass
+from enum import Enum
+
+class VadEventType(str, Enum):
+    SPEECH = "speech"
+    SILENCE = "silence"
 
 @dataclass(frozen=True)
-class SpeechSegment:
+class VadSegment:
     """
-    Represents a time range containing active speech.
+    A period of activity or silence.
     """
     start: float
     end: float
-    confidence: float = 1.0
-
-    @property
-    def duration(self) -> float:
-        return self.end - self.start
+    event_type: VadEventType
+    confidence: float

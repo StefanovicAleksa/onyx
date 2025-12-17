@@ -1,3 +1,4 @@
+# File: app/features/transcription/service/job_handler.py
 import logging
 from uuid import UUID
 from app.core.database.connection import SessionLocal
@@ -11,14 +12,10 @@ logger = logging.getLogger(__name__)
 class TranscriptionHandler:
     """
     Worker class responsible for executing TRANSCRIPTION jobs.
+    Updated to save Rich Metadata to DB.
     """
     
     def handle(self, source_id: UUID, params: dict) -> dict:
-        """
-        1. Retrieves file path from Source ID.
-        2. Runs Whisper (via Adapter).
-        3. Saves Transcription and Segments to DB.
-        """
         logger.info(f"Processing Transcription for Source: {source_id}")
 
         with SessionLocal() as db:
@@ -27,33 +24,28 @@ class TranscriptionHandler:
             if not source:
                 raise ValueError(f"Source {source_id} not found.")
             
-            # The Source points to a File record which has the path
             file_record = source.original_file
             if not file_record:
                 raise ValueError(f"Source {source_id} has no associated file.")
                 
             audio_path = file_record.file_path
-            model_size = params.get("model_size", "base") # Default to base for speed if not specified
+            model_size = params.get("model_size", "base")
 
             # 2. Execute Transcription
             adapter = WhisperAdapter()
             result = adapter.transcribe(audio_path, model_size)
 
             # 3. Retrieve the Job ID
-            # (In a real queue system, job_id is passed in. Here we find the running job).
             job = db.query(JobModel).filter(
                 JobModel.source_id == source_id,
                 JobModel.status == JobStatus.PROCESSING
             ).first()
-            
-            # Fallback for direct execution without job context
             job_id_val = job.id if job else None
             
             if not job_id_val:
-                # If we are running this manually outside the job manager, we skip DB link or create dummy
-                logger.warning("No active JOB found for this transcription. saving with null job_id might fail constraint.")
-                # For safety in this strict schema, we assume a job exists. 
-                # If testing manually, ensure a job is created first.
+                logger.warning("No active JOB found for this transcription.")
+                # If rigorous, create dummy job or raise error. 
+                # For now, we proceed to allow testing.
 
             # 4. Save Header
             transcription = TranscriptionModel(
@@ -61,18 +53,33 @@ class TranscriptionHandler:
                 job_id=job_id_val,
                 language=result.language,
                 model_used=result.model_used,
-                full_text=result.full_text
+                full_text=result.full_text,
+                processing_meta=result.processing_meta
             )
+            
             db.add(transcription)
-            db.flush() # Generate ID
+            db.flush() 
 
-            # 5. Save Segments (Bulk insert is better, but loop is fine for now)
+            # 5. Save Segments with Rich Metadata
             for seg in result.segments:
+                
+                # Serialize the domain objects to JSON dicts
+                meta_payload = {
+                    "confidence": seg.confidence,
+                    "words": [
+                        {"w": w.word, "s": w.start, "e": w.end, "c": w.confidence} 
+                        for w in seg.words
+                    ],
+                    "raw_meta": seg.metadata
+                }
+
                 db.add(TranscriptionSegmentModel(
                     transcription_id=transcription.id,
                     start_time=seg.start,
                     end_time=seg.end,
-                    text=seg.text
+                    text=seg.text,
+                    # speaker_id remains NULL until Pipeline feature is built
+                    meta_data=meta_payload
                 ))
 
             db.commit()
