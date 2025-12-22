@@ -1,6 +1,52 @@
-# Core
-pydantic>=2.0.0
-python-dotenv>=1.0.0
+# ===== Onyx Enterprise AI Appliance - Dependency Manifest =====
 
-# Media Processing (Wrappers only, requires system ffmpeg)
-# We might use ffmpeg-python later, but for now we use subprocess
+# --- Build Tools & Pre-requisites ---
+# Cython is often required *before* installing NeMo or specialized audio decoders
+Cython>=3.0.0
+packaging>=23.0
+wheel>=0.40.0
+
+# --- Core Infrastructure ---
+python-dotenv>=1.0.0        # Environment variable management (.env loading)
+pydantic>=2.0.0             # Strict Data Validation (v2)
+typing-extensions>=4.5.0    # Advanced type hinting (Required by Pydantic/Torch)
+numpy<2.0.0                 # Pinned <2.0 for ecosystem compatibility (Numba/Torch)
+
+# --- Database Layer ---
+sqlalchemy>=2.0.0           # ORM (Modern 2.0 syntax used in models)
+psycopg2-binary>=2.9.0      # PostgreSQL Adapter (Production DB)
+alembic>=1.13.0             # Database Migrations
+sqlalchemy-utils>=0.41.0    # Database creation utils (Used in tests/conftest.py)
+
+# --- AI Core (PyTorch) ---
+# NOTE: For Production/GPU, install via: pip install torch --index-url https://download.pytorch.org/whl/cu118
+torch>=2.2.0
+torchaudio>=2.2.0
+torchvision>=0.17.0
+
+# --- Audio Intelligence (ASR/VAD/Diarization) ---
+openai-whisper>=20231117    # Transcription (Local)
+soundfile>=0.12.1           # Audio IO backend
+# NVIDIA NeMo (VAD & Diarization)
+# Note: NeMo is heavy. If installation fails, install 'Cython' separately first.
+nemo_toolkit[asr]>=1.23.0
+
+# --- Visual & Text Intelligence (LLM/VLM) ---
+transformers>=4.38.0        # Hugging Face Model Loaders
+accelerate>=0.27.0          # Model Offloading & GPU/CPU Dispatch
+bitsandbytes>=0.42.0        # 4-bit/8-bit Quantization (Vital for 12GB VRAM)
+einops>=0.7.0               # Tensor ops (Required by Qwen-VL/Custom Architectures)
+sentencepiece>=0.1.99       # Tokenizer backend
+tiktoken>=0.6.0             # OpenAI Token counting (Used in Context Pipeline)
+pillow>=10.2.0              # Image Processing
+
+# --- RAG & Vector Storage ---
+chromadb>=0.4.22            # Local Vector Database
+
+# --- Utilities & Processing ---
+tqdm>=4.66.0                # Progress bars
+scipy>=1.12.0               # Signal processing (Required by many audio libs)
+
+# --- Testing & Quality Assurance ---
+pytest>=7.4.0               # Test Runner
+pytest-cov>=4.1.0           # Coverage reporting

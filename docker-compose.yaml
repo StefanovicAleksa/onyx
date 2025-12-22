@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  # Primary Database for Local Dev / Testing
+  db:
+    image: postgres:15-alpine
+    container_name: onyx_db
+    restart: always
+    environment:
+      # Matches app/core/config/settings.py
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: onyx_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
