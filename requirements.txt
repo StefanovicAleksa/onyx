@@ -1,3 +1,5 @@
+# ===== Onyx AI Appliance (GPU/Production) =====
+
 # --- Build Tools ---
 Cython>=3.0.11
 packaging>=24.2
@@ -7,7 +9,6 @@ wheel>=0.45.0
 python-dotenv>=1.0.1
 pydantic>=2.10.0
 typing-extensions>=4.12.0
-# Moving to Numpy 2.0+ for better performance/compatibility
 numpy>=2.0.0,<2.1.0
 
 # --- Database Layer ---
@@ -28,7 +29,6 @@ nemo_toolkit[asr]>=1.23.0
 omegaconf>=2.3.0
 
 # --- Visual & Text Intelligence ---
-# Security: transformers and accelerate updated to patched versions
 transformers>=4.47.1
 accelerate>=1.2.1
 bitsandbytes>=0.45.0
@@ -36,6 +36,11 @@ einops>=0.8.0
 sentencepiece>=0.2.0
 tiktoken>=0.8.0
 pillow>=11.0.0
+
+# --- Version Compatibility Fixes ---
+# Crucial: Fixes the 'PyExtensionType' crash in NeMo/Datasets
+pyarrow==14.0.1
+datasets==2.19.0
 
 # --- RAG & Vector Storage ---
 chromadb>=0.5.23
