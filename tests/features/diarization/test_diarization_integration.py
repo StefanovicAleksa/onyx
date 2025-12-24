@@ -4,6 +4,7 @@ from app.core.database.base import Base
 from app.core.database.connection import engine, SessionLocal
 from app.features.storage.data.sql_models import SourceModel, FileModel
 from app.features.transcription.data.sql_models import TranscriptionModel, TranscriptionSegmentModel
+from app.core.jobs.models import JobModel, JobStatus, JobType
 from app.features.diarization.service.job_handler import DiarizationHandler
 from app.features.diarization.data.sql_models import SourceSpeakerModel
 from app.core.common.enums import SourceType, FileType
@@ -25,6 +26,8 @@ def test_diarization_aligns_speakers_to_text():
     """
     # 1. Setup Mock Source & Data
     source_id = uuid4()
+    job_id = uuid4()
+
     with SessionLocal() as db:
         # A. Create File Record First
         file_rec = FileModel(
@@ -34,30 +37,40 @@ def test_diarization_aligns_speakers_to_text():
             file_type=FileType.AUDIO
         )
         db.add(file_rec)
-        db.flush()  # Generates file_rec.id
+        db.flush()
 
-        # [cite_start]B. Create Source Record linked to File [cite: 172]
+        # B. Create Source Record
         src = SourceModel(
             id=source_id,
             name="Alignment Test",
             source_type=SourceType.AUDIO_FILE,
-            file_id=file_rec.id  # Explicit Foreign Key Link
+            file_id=file_rec.id
         )
         db.add(src)
-        db.commit()  # Commit source logic
+        db.commit()
 
-        # C. Create Transcription Header
+        # C. [FIX] Create Job Record (Required for Foreign Key)
+        job = JobModel(
+            id=job_id,
+            source_id=source_id,
+            job_type=JobType.DIARIZATION,
+            status=JobStatus.PROCESSING
+        )
+        db.add(job)
+        db.commit()
+
+        # D. Create Transcription Header
         trans = TranscriptionModel(
             source_id=source_id,
-            job_id=uuid4(),  # Dummy Job ID
+            job_id=job_id,  # Link to the real Job we just created
             model_used="fake",
             full_text="..."
         )
         db.add(trans)
         db.flush()
 
-        # D. Create Segments
-        # Segment at 1.0s (Should match speaker_0 in Mock Adapter)
+        # E. Create Segments
+        # Segment at 1.0s (Should match speaker_0)
         seg_match = TranscriptionSegmentModel(
             transcription_id=trans.id,
             start_time=1.0,
@@ -76,9 +89,6 @@ def test_diarization_aligns_speakers_to_text():
         db.commit()
 
     # 2. Run Handler
-    # Note: Our Mock Adapter in `nemo_adapter.py` returns:
-    # 0.0-2.0s -> speaker_0
-    # 2.0-4.5s -> speaker_1
     handler = DiarizationHandler()
     result = handler.handle(source_id, {})
 
