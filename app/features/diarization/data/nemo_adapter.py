@@ -2,7 +2,7 @@ import logging
 import omegaconf
 from app.core.config.settings import settings
 from app.core.model_lifecycle.orchestrator import ModelOrchestrator, ModelType
-from ..domain.models import DiarizationResult, SpeakerSegment
+from ..domain.models import DiarizationResult
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class NemoDiarizationAdapter:
     """
     Concrete implementation of speaker diarization using NVIDIA NeMo.
-    Handles memory lifecycle via the ModelOrchestrator.
+    Handles VRAM lifecycle via the ModelOrchestrator.
     """
 
     def __init__(self):
@@ -21,40 +21,59 @@ class NemoDiarizationAdapter:
         logger.info(f"Orchestrating NeMo Diarization for: {audio_path}")
 
         def loader():
-            # Lazy import to keep startup fast
+            # noinspection PyPackageRequirements
             from nemo.collections.asr.models import ClusteringDiarizer
 
-            # Setup configuration for the diarizer
-            # Using TitaNet-L for high-accuracy speaker embeddings
+            # Detailed Config Structure required by ClusteringDiarizer
             cfg = omegaconf.OmegaConf.create({
                 'diarizer': {
                     'manifest_filepath': None,
                     'out_dir': str(settings.ARTIFACTS_DIR / "diar_temp"),
-                    'speaker_embeddings': {'model_path': str(settings.NEMO_DIAR_PATH)},
+                    'oracle_vad': False,
+                    'collar': 0.25,
+                    'ignore_overlap': True,
+                    'vad': {
+                        'model_path': 'vad_multilingual_marblenet',
+                        'parameters': {
+                            'onset': 0.8,
+                            'offset': 0.6,
+                            'pad_onset': 0.05,
+                            'pad_offset': -0.1,
+                            'min_duration_on': 0.2,
+                            'min_duration_off': 0.2,
+                            'filter_speech_first': True
+                        }
+                    },
+                    'speaker_embeddings': {
+                        'model_path': str(settings.NEMO_DIAR_PATH),
+                        'parameters': {
+                            'window_length_in_sec': 1.5,
+                            'shift_length_in_sec': 0.75,
+                            'multiscale_weights': [1, 1, 1, 1, 1],
+                            'save_embeddings': False
+                        }
+                    },
                     'clustering': {
                         'parameters': {
-                            'oracle_num_speakers': num_speakers is not None
+                            'oracle_num_speakers': num_speakers is not None,
+                            'max_num_speakers': 8 if not num_speakers else num_speakers
                         }
                     }
                 }
             })
             return ClusteringDiarizer(cfg=cfg).to(self.device)
 
-        # 1. Request the real model
+        # 1. Request the model via the Traffic Cop
         model = self.orchestrator.request_model(ModelType.NEMO_DIARIZATION, loader)
 
-        # 2. Perform Real Inference check
         if not model:
-            logger.error("Failed to retrieve NeMo model from orchestrator.")
+            logger.error("Failed to load Diarization model.")
             return DiarizationResult(source_file=audio_path, num_speakers=0, segments=[])
 
-        logger.info(f"Executing NeMo {model.__class__.__name__} inference...")
-
-        # Placeholder for the actual inference call logic which requires a manifest
-        domain_segments: list[SpeakerSegment] = []
-
+        # 2. Perform Inference (Placeholder for integration test stability)
+        # Real inference requires generating a manifest file.
         return DiarizationResult(
             source_file=audio_path,
             num_speakers=0,
-            segments=domain_segments
+            segments=[]
         )
