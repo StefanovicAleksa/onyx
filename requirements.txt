@@ -1,13 +1,16 @@
-# --- Build Tools (Pinned to satisfy Lightning) ---
+# ===== Onyx AI Appliance (GPU/Production) =====
+
+# --- Build Tools ---
 Cython>=3.0.11
 packaging==24.2
 wheel>=0.45.0
 
-# --- Core Infrastructure (Pinned to satisfy Numba) ---
+# --- Core Infrastructure ---
 python-dotenv>=1.0.1
 pydantic>=2.10.0
 typing-extensions>=4.12.0
-numpy==2.3.0
+# CRITICAL: Numba 0.60.0 does NOT support Numpy 2.x yet.
+numpy<2.0.0,>=1.24.0
 
 # --- Database Layer ---
 sqlalchemy>=2.0.36
@@ -15,7 +18,7 @@ psycopg2-binary>=2.9.10
 alembic>=1.15.0
 sqlalchemy-utils>=0.41.2
 
-# --- AI Core ---
+# --- AI Core (PyTorch GPU) ---
 torch>=2.5.0
 torchaudio>=2.5.0
 torchvision>=0.20.0
@@ -37,9 +40,11 @@ tiktoken>=0.8.0
 pillow>=11.0.0
 
 # --- Version Compatibility Fixes ---
+# Pyarrow must be compatible with both datasets and the numpy version
 pyarrow==14.0.1
 datasets==2.19.0
-urllib3<2.4.0
+fsspec==2024.3.1
+urllib3<2.3.0
 
 # --- RAG & Vector Storage ---
 chromadb>=0.5.23
